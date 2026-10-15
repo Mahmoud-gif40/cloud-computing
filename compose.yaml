@@ -15,6 +15,7 @@ services:
 
   web:
     build: .
+    image: ghcr.io/mahmoud-gif40/storingsmelder:1.0.0
     ports:
       - "8000:8000"
     environment:
