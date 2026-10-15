@@ -37,7 +37,7 @@ Maak een eigen .env bestand van het voorbeeld.
 copy .env.example .env
 ```
 
-Open .env en vul de drie waardes in. Dat zijn POSTGRES_USER, POSTGRES_PASSWORD en POSTGRES_DB. Kies zelf een wachtwoord. Bijvoorbeeld storing als gebruiker en storingen als databasenaam.
+Open .env en vul de drie waardes in. Dat zijn POSTGRES_USER, POSTGRES_PASSWORD en POSTGRES_DB. Kies zelf een wachtwoord. Bijvoorbeeld storing als gebruiker en storingen als databasenaam. Sla het bestand op. Blijft een waarde leeg, dan start de database niet.
 
 Start alles.
 
