@@ -19,3 +19,6 @@ spec:
           image: ghcr.io/mahmoud-gif40/storingsmelder:1.0.0
           ports:
             - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://storing:geheim@db:5432/storingen"
