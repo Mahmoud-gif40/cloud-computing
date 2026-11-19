@@ -4,25 +4,29 @@ Mahmoud Haskour
 
 Dit is een klein systeem om storingen te melden. Je vult een formulier in, je ziet de open meldingen in een lijst, en je sluit ze af als ze opgelost zijn.
 
-Ik heb de applicatie in containers gezet, samen met een PostgreSQL database. Alles start met een enkel commando en de meldingen blijven bewaard.
+De applicatie draait op een Kubernetes cluster, samen met een PostgreSQL database. De cluster haalt het image op uit ghcr.io.
 
 ## Wat er in de repo staat
 
 ```
-app.py              de applicatie
-requirements.txt    de pakketten die ze nodig heeft
-templates/          de HTML van de pagina
-Dockerfile          bouwt het image van de applicatie
-compose.yaml        start de applicatie en de database samen
-.env.example        de namen van de instellingen, met lege waardes
-.gitignore          houdt .env uit Git
+app.py                  de applicatie
+requirements.txt        de pakketten die ze nodig heeft
+templates/              de HTML van de pagina
+Dockerfile              bouwt het image van de applicatie
+compose.yaml            de opzet met Docker Compose uit opdracht 1
+k8s/deployment.yaml     de applicatie, twee replicas
+k8s/service.yaml        de Service van de applicatie
+k8s/db-deployment.yaml  de database, een replica
+k8s/db-service.yaml     de Service van de database
 ```
 
 ## Wat je nodig hebt
 
-Docker Desktop, en het moet draaien. Git.
+Een draaiende Kubernetes cluster en kubectl die naar die cluster wijst. Internet, want de cluster haalt het image op bij ghcr.io. Het image is publiek.
 
-## Starten vanaf nul
+Ik heb dit getest op Docker Desktop met kubeadm.
+
+## Starten op de cluster
 
 Clone de repo en ga naar de map.
 
@@ -31,93 +35,54 @@ git clone https://github.com/Mahmoud-gif40/cloud-computing.git
 cd cloud-computing
 ```
 
-Maak een eigen .env bestand van het voorbeeld.
+Maak een namespace en zet alles op.
 
 ```
-copy .env.example .env
+kubectl create namespace proef
+kubectl apply -f k8s/ -n proef
+kubectl get pods -n proef
 ```
 
-Open .env en vul de drie waardes in. Dat zijn POSTGRES_USER, POSTGRES_PASSWORD en POSTGRES_DB. Kies zelf een wachtwoord. Bijvoorbeeld storing als gebruiker en storingen als databasenaam. Sla het bestand op. Blijft een waarde leeg, dan start de database niet.
-
-Start alles.
-
-```
-docker compose up -d --build
-docker compose ps
-```
-
-Bij de database moet healthy staan. Dat duurt een paar seconden. Open daarna http://localhost:8000 in de browser en meld een storing.
+Wacht tot alle pods Running zijn. Dat duurt een minuut of twee, want de images moeten worden opgehaald. De applicatie kan een keer herstarten omdat de database nog opstart. Dat is normaal, Kubernetes start haar zelf opnieuw.
 
 ## Controleren
 
-De applicatie heeft een adres dat zegt of alles in orde is.
+Kijk of de Services hun pods gevonden hebben. Bij elke Service moeten IP adressen staan.
 
 ```
-curl.exe http://localhost:8000/health
+kubectl get endpoints -n proef
 ```
 
-Draait alles, dan krijg je status ok en code 200. Kan de applicatie de database niet bereiken, dan krijg je code 503.
-
-## Stoppen
+Maak de applicatie bereikbaar.
 
 ```
-docker compose down
+kubectl port-forward service/storingsmelder 8000:80 -n proef
 ```
 
-Dit verwijdert de containers en het netwerk. De volumes blijven staan, dus de meldingen blijven bewaard. Na een nieuwe start staan ze er nog.
-
-Wil je ook de data wissen, gebruik dan dit.
+Open http://localhost:8000 in de browser en meld een storing. In een tweede venster kan je dit doen.
 
 ```
-docker compose down -v
+curl http://localhost:8000/health
 ```
 
-Dan zijn de meldingen weg.
+Daar moet PostgreSQL bij opslag staan. Dan praat de applicatie met de database.
 
-## Instellingen
-
-Alles wordt geregeld met environment variables. Er staat niets vast in de code.
-
-DATABASE_URL. Is die leeg, dan slaat de applicatie op in een SQLite bestand. Staat er een PostgreSQL adres in, dan gebruikt ze die database. In dit project zet compose.yaml die zelf, op basis van de waardes uit .env.
-
-SQLITE_PAD. De plek van het SQLite bestand. Standaard is dat /data/storingen.db.
-
-APP_TITEL. De titel boven aan de pagina. Standaard is dat Storingsmelder.
-
-PORT. De poort van de applicatie. Standaard is dat 8000.
-
-## Het image
-
-Het image staat publiek op ghcr.io, met een versienummer.
+## Opruimen
 
 ```
-docker pull ghcr.io/mahmoud-gif40/storingsmelder:1.0.0
+kubectl delete namespace proef
 ```
 
 ## Wat ik gedaan heb
 
-De applicatie draait in een eigen container, gebouwd uit de Dockerfile. De database draait in een tweede container met postgres 18.
+Het image van de applicatie staat publiek op ghcr.io, met het versienummer 1.0.0 en niet latest.
 
-Compose maakt zelf een netwerk. Daarom vindt de applicatie de database met de naam db. Met localhost werkt het niet, want in een container is localhost de container zelf. Dan krijg je connection refused. De poort van de database is niet gepubliceerd. Alleen de applicatie moet erbij.
+De applicatie is een Deployment met twee replicas. De Service storingsmelder luistert op poort 80 en stuurt door naar poort 8000 van de pods. Het label op de pods is gelijk aan de selector, zo vindt de Service haar pods.
 
-De data staat in twee named volumes, een voor de applicatie en een voor de database. Daardoor blijven de meldingen bewaard als de containers weggaan. Bij postgres 18 hangt het volume aan /var/lib/postgresql, want de data staat daar in een map met het versienummer.
+De database is een aparte Deployment met een replica. Drie replicas zouden drie aparte databases geven, want elke pod schrijft naar zijn eigen opslag.
 
-De database start niet meteen klaar. Daarom heeft ze een healthcheck met pg_isready. De applicatie start pas als de database healthy is. Dat doe ik met depends_on en service_healthy. depends_on alleen wacht niet tot de database klaar is. Daarnaast heeft de applicatie restart unless-stopped, voor als ze later om een andere reden crasht.
+De Service van de database heet db. Die naam staat in DATABASE_URL, en niet localhost. In een pod is localhost de pod zelf. Kubernetes heeft een eigen DNS die de naam van de Service omzet naar het juiste adres. De Service is van het type ClusterIP, dus de database is niet van buitenaf bereikbaar. Alleen de applicatie komt erbij.
 
-Het wachtwoord staat in .env en niet in de repo. In .env.example staan dezelfde namen met lege waardes, zodat je weet wat je moet invullen.
-dus in kort 
-Ik heb de applicatie in een container gezet met de Dockerfile.
+Het wachtwoord staat nu nog in het manifest. Dat los ik op in opdracht 3.
 
-Ik heb een tweede container gemaakt met postgres 18 voor de database.
-
-Ik heb de applicatie naar de database laten wijzen met de naam db. Met localhost werkt het niet, want dan zoekt ze de database in haar eigen container.
-
-Ik heb de poort van de database niet gepubliceerd. Alleen de applicatie moet erbij.
-
-Ik heb twee volumes gemaakt, een voor de applicatie en een voor de database. Daardoor blijven de meldingen bewaard. Bij postgres 18 hangt het volume aan /var/lib/postgresql.
-
-Ik heb een healthcheck op de database gezet. De applicatie start pas als de database klaar is.
-
-Ik heb restart unless-stopped op de applicatie gezet, voor als ze later crasht.
-
-Ik heb het wachtwoord in .env gezet. Dat bestand staat niet in de repo. In .env.example staan alleen de namen.
+De database heeft nog geen volume. De meldingen verdwijnen als de database pod verdwijnt.
